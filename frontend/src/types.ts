@@ -6,22 +6,23 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   pending?: boolean;
-  sources?: Array<{
-    title: string;
-    snippet: string;
-  }>;
 }
 
-export interface AgentTool {
-  id: string;
-  label: string;
-  enabled: boolean;
-  description: string;
+export interface InterviewState {
+  slots: Record<string, string | null>;
+  goal_completed: boolean;
+  ended: boolean;
 }
 
-export interface ChatSession {
-  id: string;
-  title: string;
-  lastMessageAt: string;
+export interface ToolCall {
+  tool: string;
+  target?: string;
+  [key: string]: unknown;
+}
+
+export interface ChatResponse {
+  answer: string;
+  interview_state: InterviewState;
+  tool_calls: ToolCall[];
 }
 

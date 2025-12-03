@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../config";
-import type { AgentTool, ChatMessage, ChatSession } from "../types";
+import type { ChatResponse } from "../types";
 
 const defaultHeaders = {
   "Content-Type": "application/json"
@@ -13,57 +13,42 @@ const handleResponse = async (resp: Response) => {
   return resp.json();
 };
 
-export async function sendMessage(
-  sessionId: string,
-  payload: { message: string; tools: string[]; temperature: number }
-): Promise<{ messages: ChatMessage[] }> {
-  const resp = await fetch(`${API_BASE_URL}/api/chat/${sessionId}`, {
+export async function sendChatMessage({
+  userId,
+  message,
+  temperature
+}: {
+  userId: string;
+  message: string;
+  temperature: number;
+}): Promise<ChatResponse> {
+  const resp = await fetch(`${API_BASE_URL}/chat`, {
     method: "POST",
     headers: defaultHeaders,
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      user_id: userId,
+      message,
+      temperature
+    })
   });
   return handleResponse(resp);
 }
 
-export async function createSession(): Promise<ChatSession> {
-  const resp = await fetch(`${API_BASE_URL}/api/chat`, {
+export async function uploadResume({
+  userId,
+  file
+}: {
+  userId: string;
+  file: File;
+}): Promise<{ status: string; indexed_path?: string; resume_indexed?: boolean }> {
+  const form = new FormData();
+  form.append("file", file);
+  // optional: send user_id if backend ever wants it
+  form.append("user_id", userId);
+
+  const resp = await fetch(`${API_BASE_URL}/upload`, {
     method: "POST",
-    headers: defaultHeaders,
-    body: JSON.stringify({})
-  });
-  return handleResponse(resp);
-}
-
-export async function fetchSessions(): Promise<ChatSession[]> {
-  const resp = await fetch(`${API_BASE_URL}/api/chat`);
-  return handleResponse(resp);
-}
-
-export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
-  const resp = await fetch(`${API_BASE_URL}/api/chat/${sessionId}`);
-  return handleResponse(resp);
-}
-
-export async function uploadDocument(file: File): Promise<{ id: string }> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const resp = await fetch(`${API_BASE_URL}/api/rag/upload`, {
-    method: "POST",
-    body: formData
-  });
-  return handleResponse(resp);
-}
-
-export async function fetchTools(): Promise<AgentTool[]> {
-  const resp = await fetch(`${API_BASE_URL}/api/tools`);
-  return handleResponse(resp);
-}
-
-export async function toggleTool(toolId: string, enabled: boolean) {
-  const resp = await fetch(`${API_BASE_URL}/api/tools/${toolId}`, {
-    method: "PATCH",
-    headers: defaultHeaders,
-    body: JSON.stringify({ enabled })
+    body: form
   });
   return handleResponse(resp);
 }

@@ -42,22 +42,6 @@ const MessageBubble = ({ message }: MessageBubbleProps) => {
         {message.pending && <Loader2 className="size-4 animate-spin text-white/50" />}
       </div>
       <p className="whitespace-pre-wrap text-base leading-relaxed text-white/90">{message.content}</p>
-      {message.sources && message.sources.length > 0 && (
-        <div className="rounded-xl border border-white/5 bg-black/20 p-3">
-          <p className="mb-2 text-xs uppercase text-white/40">Context</p>
-          <div className="space-y-2 text-sm text-white/70">
-            {message.sources.map((source) => (
-              <div
-                key={source.title}
-                className="rounded-lg border border-white/5 bg-white/5 p-2"
-              >
-                <p className="font-medium text-white">{source.title}</p>
-                <p className="text-white/70">{source.snippet}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

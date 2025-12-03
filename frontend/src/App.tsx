@@ -3,51 +3,36 @@ import SidePanel from "./components/SidePanel";
 import { useChat } from "./hooks/useChat";
 
 const App = () => {
-  const chat = useChat();
   const {
-    state,
+    messages,
     sendMessage,
-    selectSession,
-    createSession,
-    setTemperature,
     setComposerValue,
     composerValue,
-    temperature,
-    selectedTools,
-    toggleTool,
-    uploadDocument,
-    sendMutation,
-    uploadMutation
-  } = chat;
+    isSending,
+    interviewState,
+    hasResume,
+    uploadResume,
+    isUploadingResume
+  } = useChat();
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-white py-6 px-4 md:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row">
-        <div className="flex-1 rounded-3xl border border-white/5 bg-white/5 p-1 shadow-elevated backdrop-blur-xl">
+    <div className="h-screen w-full overflow-hidden bg-slate-900 text-white">
+      <div className="mx-auto flex h-full max-w-7xl flex-col gap-6 p-4 md:p-8 lg:flex-row">
+        <div className="flex-1 min-h-0 rounded-3xl border border-white/10 bg-white/10 p-1 shadow-elevated backdrop-blur-xl">
           <ChatLayout
-            messages={state.messages}
-            isSending={sendMutation.isPending}
+            messages={messages}
+            isSending={isSending}
             composerValue={composerValue}
             setComposerValue={setComposerValue}
             onSend={sendMessage}
-            temperature={temperature}
-            onTemperatureChange={setTemperature}
-            selectedTools={selectedTools}
+            interviewState={interviewState}
+            hasResume={hasResume}
+            onUploadResume={uploadResume}
+            isUploadingResume={isUploadingResume}
           />
         </div>
-        <aside className="w-full lg:w-96">
-          <SidePanel
-            sessions={state.sessions}
-            activeSessionId={state.activeSessionId}
-            onSelectSession={selectSession}
-            onCreateSession={createSession}
-            tools={state.tools}
-            selectedTools={selectedTools}
-            toggleTool={toggleTool}
-            onUpload={uploadDocument}
-            uploadState={{ isPending: uploadMutation.isPending }}
-            isLoading={state.isLoading}
-          />
+        <aside className="w-full max-h-full overflow-y-auto rounded-3xl border border-white/10 bg-white/10 p-1 lg:w-80 xl:w-96">
+          <SidePanel hasResume={hasResume} onUpload={uploadResume} isUploading={isUploadingResume} />
         </aside>
       </div>
     </div>

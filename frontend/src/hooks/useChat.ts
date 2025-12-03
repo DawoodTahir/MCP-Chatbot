@@ -1,163 +1,132 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  createSession,
-  fetchMessages,
-  fetchSessions,
-  fetchTools,
-  sendMessage,
-  toggleTool,
-  uploadDocument
-} from "../lib/api";
-import type { AgentTool, ChatMessage, ChatSession } from "../types";
+import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { sendChatMessage, uploadResume } from "../lib/api";
+import type { ChatMessage, InterviewState, ToolCall } from "../types";
 
-interface SendArgs {
-  message: string;
-}
+const USER_ID_KEY = "chatbot:session";
+
+const ensureUserId = () => {
+  if (typeof window === "undefined") {
+    return crypto.randomUUID();
+  }
+  const existing = window.localStorage.getItem(USER_ID_KEY);
+  if (existing) {
+    return existing;
+  }
+  const generated = crypto.randomUUID();
+  window.localStorage.setItem(USER_ID_KEY, generated);
+  return generated;
+};
 
 export const useChat = () => {
-  const queryClient = useQueryClient();
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [temperature, setTemperature] = useState(0.3);
-  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [userId] = useState<string>(() => ensureUserId());
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [composerValue, setComposerValue] = useState("");
-
-  const sessionsQuery = useQuery<ChatSession[]>({
-    queryKey: ["sessions"],
-    queryFn: fetchSessions
-  });
-
-  useEffect(() => {
-    if (!activeSessionId && sessionsQuery.data?.length) {
-      setActiveSessionId(sessionsQuery.data[0].id);
-    }
-  }, [activeSessionId, sessionsQuery.data]);
-
-  const toolsQuery = useQuery<AgentTool[]>({
-    queryKey: ["tools"],
-    queryFn: fetchTools,
-    onSuccess: (data) => {
-      setSelectedTools(data.filter((tool) => tool.enabled).map((tool) => tool.id));
-    }
-  });
-
-  const messagesQuery = useQuery<ChatMessage[]>({
-    queryKey: ["messages", activeSessionId],
-    queryFn: () => fetchMessages(activeSessionId as string),
-    enabled: Boolean(activeSessionId),
-    refetchInterval: 10_000
-  });
+  const [temperature, setTemperature] = useState(0.3);
+  const [interviewState, setInterviewState] = useState<InterviewState | null>(null);
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [hasResume, setHasResume] = useState(false);
 
   const sendMutation = useMutation({
-    mutationFn: (payload: SendArgs) => {
-      if (!activeSessionId) {
-        throw new Error("No active session.");
-      }
-      return sendMessage(activeSessionId, {
-        message: payload.message,
-        temperature,
-        tools: selectedTools
-      });
-    },
-    onMutate: async (payload) => {
-      if (!activeSessionId) return;
-      await queryClient.cancelQueries({ queryKey: ["messages", activeSessionId] });
-      const previous = queryClient.getQueryData<ChatMessage[]>(["messages", activeSessionId]) ?? [];
-      const optimistic: ChatMessage = {
+    mutationFn: ({ message }: { message: string }) =>
+      sendChatMessage({ userId, message, temperature }),
+    onMutate: async ({ message }) => {
+      const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content: payload.message,
+        content: message,
+        createdAt: new Date().toISOString()
+      };
+      const assistantPlaceholder: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "Spinning up MCP stack…",
         createdAt: new Date().toISOString(),
         pending: true
       };
-      queryClient.setQueryData(["messages", activeSessionId], [...previous, optimistic]);
+
+      setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
       setComposerValue("");
-      return { previous };
+
+      return {
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantPlaceholder.id
+      };
     },
-    onError: (_err, _payload, context) => {
-      if (context?.previous && activeSessionId) {
-        queryClient.setQueryData(["messages", activeSessionId], context.previous);
-      }
+    onSuccess: (data, _variables, context) => {
+      if (!context) return;
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === context.assistantMessageId
+            ? {
+                ...msg,
+                content: data.answer,
+                pending: false,
+                createdAt: new Date().toISOString()
+              }
+            : msg
+        )
+      );
+      setInterviewState(data.interview_state);
+      setToolCalls(data.tool_calls ?? []);
     },
-    onSettled: () => {
-      if (activeSessionId) {
-        queryClient.invalidateQueries({ queryKey: ["messages", activeSessionId] });
+    onError: (_error, variables, context) => {
+      if (context) {
+        setMessages((prev) =>
+          prev.filter(
+            (msg) => msg.id !== context.userMessageId && msg.id !== context.assistantMessageId
+          )
+        );
       }
+      setComposerValue(variables.message);
     }
   });
 
-  const newSessionMutation = useMutation({
-    mutationFn: createSession,
-    onSuccess: (session) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      setActiveSessionId(session.id);
-    }
-  });
-
-  const toggleToolMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => toggleTool(id, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tools"] })
-  });
+  const resetConversation = () => {
+    setMessages([]);
+    setInterviewState(null);
+    setToolCalls([]);
+  };
 
   const uploadMutation = useMutation({
-    mutationFn: uploadDocument,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tools"] });
+    mutationFn: ({ file }: { file: File }) => uploadResume({ userId, file }),
+    onSuccess: (data) => {
+      if (data?.resume_indexed || data?.status === "ok") {
+        setHasResume(true);
+      }
     }
   });
 
-  const activeMessages = messagesQuery.data ?? [];
-
-  const state = useMemo(
-    () => ({
-      sessions: sessionsQuery.data ?? [],
-      messages: activeMessages,
-      tools: toolsQuery.data ?? [],
-      activeSessionId,
-      temperature,
-      composerValue,
-      selectedTools,
-      isLoading:
-        sessionsQuery.isLoading ||
-        messagesQuery.isLoading ||
-        toolsQuery.isLoading ||
-        sendMutation.isPending
-    }),
-    [
-      sessionsQuery.data,
-      activeMessages,
-      toolsQuery.data,
-      activeSessionId,
-      temperature,
-      composerValue,
-      selectedTools,
-      sessionsQuery.isLoading,
-      messagesQuery.isLoading,
-      toolsQuery.isLoading,
-      sendMutation.isPending
-    ]
-  );
+  const slotStats = useMemo(() => {
+    if (!interviewState?.slots) {
+      return { filled: 0, total: 0, remaining: 0 };
+    }
+    const entries = Object.entries(interviewState.slots);
+    const filled = entries.filter(([, value]) => Boolean(value && value.trim())).length;
+    const total = entries.length;
+    return { filled, total, remaining: Math.max(total - filled, 0) };
+  }, [interviewState]);
 
   return {
-    state,
-    sendMessage: (message: string) => sendMutation.mutateAsync({ message }),
-    createSession: () => newSessionMutation.mutate(),
-    selectSession: (sessionId: string) => setActiveSessionId(sessionId),
-    setTemperature,
-    setComposerValue,
+    messages,
     composerValue,
+    setComposerValue,
     temperature,
-    selectedTools,
-    toggleTool: (id: string, enabled: boolean) => {
-      setSelectedTools((prev) =>
-        enabled ? Array.from(new Set([...prev, id])) : prev.filter((tool) => tool !== id)
-      );
-      toggleToolMutation.mutate({ id, enabled });
+    setTemperature,
+    sendMessage: async (message: string) => {
+      await sendMutation.mutateAsync({ message });
     },
-    uploadDocument: (file: File) => uploadMutation.mutateAsync(file),
-    toolsQuery,
-    sendMutation,
-    uploadMutation
+    isSending: sendMutation.isPending,
+    interviewState,
+    resetConversation,
+    userId,
+    toolCalls,
+    slotStats,
+    hasResume,
+    uploadResume: async (file: File) => {
+      await uploadMutation.mutateAsync({ file });
+    },
+    isUploadingResume: uploadMutation.isPending
   };
 };
 

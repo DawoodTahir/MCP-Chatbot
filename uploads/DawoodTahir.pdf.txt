@@ -1,0 +1,83 @@
+DAWOOD TAHIR
++44-07555859445•London, UK•Dawood_tahir@live.com
+www.linkedin.com/in/mdawoodtahir
+SUMMARY
+AWS Certified Machine Learning Engineer with over 2 years of experience in computer vision and AI
+projects. Skilled in developing innovative solutions, such as real-time traffic analysis and sports
+analytics using YOLOv8, and enhancing AI systems with hierarchical clustering techniques. Proven
+track record of leveraging AWS technologies for deploying AI applications. Expertise in transforming
+complex datasets into actionable insights demonstrates a strong ability to deliver valuable
+contributions, ready to elevate efficiency and accuracy for any forward-thinking organisation.
+WORK EXPERIENCE
+ML Engineer, CodeLens, London , UK
+09/2024 – Present
+Researched and developed a football analytics pipeline for player and pitch understanding.
+Trained a YOLOv8 detector to identify players from two teams. Estimated 2D ball positions using
+pitch keypoint–based homography, producing a game-like end product that visualises players and
+ball possession over time. Evaluated the system using mAP@0.5 and tracking accuracy to be
+77%.
+Built a real-time vehicle speed-estimation system for a highway using a single camera input.
+Streamed live video via AWS Kinesis and processed frames with AWS Lambda to match the FPS
+of a custom vehicle-detection model. A homography transformation for speed calculation directly
+in image space. SageMaker was used for CI/CD and provisioned with IaC. Achieved 81%
+accuracy.
+Data Scientist, Psi-Square, Lahore
+04/2024 – 09/2024
+Developed a computer vision pipeline to calculate traffic dwell duration in predefined zones for
+live video feeds. Implemented system-clock–based time-in/time-out logic instead of FPS-
+dependent timing, and integrated Roboflow’s ByteTrack for low-latency multi-vehicle tracking.
+Achieved 85% tracking accuracy and 0.79 mAP on evaluation footage.
+Developed a multi-agent, orchestrated LLM research system with integrated voice-model
+interaction, secured via AWS Cognito and backed by Aurora for persistent conversation history.
+Implemented a Graph-RAG reasoning mode for complex, relationship-aware retrieval. it was
+evaluated using metrics of Precision/Recall of 91/83 %, Context-Relevancy (CR), Answer-
+Faithfulness (AF), and Hallucination Rate.
+
+AI Engineer, OMNO AI, Lahore
+05/2023 – 02/2024
+Successfully improved RAG chunks by making hierarchical clusters of chunks. starting from the
+base node and chunks , to calculate embeddings between simultaneous chunks and moving
+down the tree the same way. this helped the final customer bot be more relevant in answering the
+questions.
+Got proficient in using AWS EC2 instances to deploy and upscale an AI ad creation app.
+Developed a workflow to scrape through brand websites to get the text and imagery details. these
+were processed by an LLM Agent specified to extract brand call-to-action (CTA) button text,
+header text and punchline. Leveraged generative AI to create a seamless ad Banner on required
+size with the given text types.
+EDUCATION
+MSc, Robotics, AI & Autonomous Systems, CITY, UNIVERSITY OF LONDON, UK
+09/2024 – 10/2025
+Grades: 1st
+BSc, Mechatronics Eng., UET, LAHORE, Pakistan
+10/2019 – 05/2023
+GPA: 3.116 / 4.0
+SKILLS
+Python AWS SageMaker
+CI / CD AWS EC2
+Dockers Git
+AWS Lambda Kubernates
+TerraForm AWS ETL Tools
+LoRA Computer Vision
+Drones SLAM Deep RL
+MCP Tools Project Management
+Teamwork Effective Communication
+SQL PowerBI
+Tableau Langchain
+n8n PettingZoo
+Rlib MAPPO
+AgenticAI ByteTrack
+Diffusion Models IaC
+
+REFERENCES
+Dr. A.H Zenati
+SST, City, University of London
+Abdelhafid.Zenati@citystgeorges.ac.uk
+Collaborated on GAT networks for drone swarms for Safer flight and communications by MARL
+Dr. Ahsan Naeem
+Mechatronics Department, UET Lahore
+mahsan.naeem@gmail.com
+Worked together on numerous projects within the Mechatronics curriculum, facilitating valuable
+exchanges of knowledge and insights.
+PROFESSIONAL CERTIFICATIONS
+AWS Certified ML Engineer - Associate
+09/2025

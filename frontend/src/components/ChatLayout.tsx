@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
-import { Activity, Gauge, Sparkles } from "lucide-react";
+import { Activity, Sparkles, Waves } from "lucide-react";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, InterviewState } from "../types";
 
 interface ChatLayoutProps {
   messages: ChatMessage[];
@@ -10,15 +10,11 @@ interface ChatLayoutProps {
   composerValue: string;
   setComposerValue: (value: string) => void;
   onSend: (message: string) => Promise<void> | void;
-  temperature: number;
-  onTemperatureChange: (value: number) => void;
-  selectedTools: string[];
+  interviewState: InterviewState | null;
+  hasResume: boolean;
+  onUploadResume: (file: File) => Promise<void> | void;
+  isUploadingResume: boolean;
 }
-
-const stats = [
-  { label: "Context tokens", value: "32K", icon: Gauge },
-  { label: "Latency (p95)", value: "2.1s", icon: Activity }
-];
 
 const ChatLayout = ({
   messages,
@@ -26,38 +22,41 @@ const ChatLayout = ({
   setComposerValue,
   onSend,
   isSending,
-  temperature,
-  onTemperatureChange,
-  selectedTools
+  interviewState,
+  hasResume,
+  onUploadResume,
+  isUploadingResume
 }: ChatLayoutProps) => {
   const handleSend = async () => {
-    if (!composerValue.trim() || isSending) return;
+    if (!composerValue.trim() || isSending || !hasResume) return;
     await onSend(composerValue.trim());
   };
 
+  const infoCards = [
+    {
+      label: "Status",
+      value: !hasResume ? "Waiting for resume…" : isSending ? "Responding…" : "Online",
+      icon: Activity
+    },
+    {
+      label: "Channel",
+      value: hasResume ? "Voice or text" : "Upload required",
+      icon: Waves
+    }
+  ];
+
   return (
-    <div className="flex h-full flex-col rounded-[26px] border border-white/5 bg-slate-950/70 p-6">
+    <div className="flex h-full flex-col rounded-[26px] border border-white/10 bg-slate-900/60 p-6">
       <div className="mb-6 flex flex-wrap items-center gap-4">
-        <div className="inline-flex items-center gap-2 rounded-full border border-brand-400/30 bg-brand-500/10 px-4 py-1 text-sm font-medium text-brand-100">
-          <Sparkles className="size-4 text-brand-200" />
-          MCP Agent Live
-        </div>
-        <div className="flex flex-wrap gap-3 text-xs text-white/70">
-          {selectedTools.length ? (
-            <span className="rounded-full border border-white/10 px-3 py-1">
-              Tools: {selectedTools.length}
-            </span>
-          ) : (
-            <span className="rounded-full border border-rose-500/40 px-3 py-1 text-rose-200/80">
-              No tools armed
-            </span>
-          )}
+        <div className="inline-flex items-center gap-2 rounded-full border border-brand-400/40 bg-brand-500/15 px-4 py-1 text-sm font-medium text-brand-50">
+          <Sparkles className="size-4 text-brand-100" />
+          Concierge Assistant
         </div>
         <div className="ml-auto flex gap-3">
-          {stats.map((item) => (
+          {infoCards.map((item) => (
             <motion.div
               key={item.label}
-              className="rounded-2xl border border-white/5 bg-white/5 px-4 py-3"
+              className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3"
               whileHover={{ translateY: -2 }}
             >
               <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-white/60">
@@ -70,17 +69,26 @@ const ChatLayout = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden rounded-2xl border border-white/5 bg-slate-950/40">
-        <MessageList messages={messages} />
+      <div className="flex-1 min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/30">
+        {!hasResume ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/70">
+            <p>
+              Upload your resume once to unlock the interview. Use the Resume button beside the send
+              control—after that, typing and voice both work.
+            </p>
+          </div>
+        ) : (
+          <MessageList messages={messages} />
+        )}
       </div>
 
       <Composer
         value={composerValue}
         onChange={setComposerValue}
         onSubmit={handleSend}
-        disabled={isSending}
-        temperature={temperature}
-        onTemperatureChange={onTemperatureChange}
+        disabled={isSending || !hasResume}
+        onUploadResume={onUploadResume}
+        isUploadingResume={isUploadingResume}
       />
     </div>
   );

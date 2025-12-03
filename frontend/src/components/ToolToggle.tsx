@@ -1,8 +1,13 @@
 import clsx from "clsx";
-import type { AgentTool } from "../types";
+
+interface ToolDefinition {
+  id: string;
+  label: string;
+  description: string;
+}
 
 interface ToolToggleProps {
-  tool: AgentTool;
+  tool: ToolDefinition;
   checked: boolean;
   onChange: (checked: boolean) => void;
 }

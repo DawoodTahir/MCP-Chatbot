@@ -4,9 +4,10 @@ import { CloudUpload, Loader2 } from "lucide-react";
 interface DocumentUploadProps {
   onUpload: (file: File) => Promise<void> | void;
   isUploading: boolean;
+  disabled?: boolean;
 }
 
-const DocumentUpload = ({ onUpload, isUploading }: DocumentUploadProps) => {
+const DocumentUpload = ({ onUpload, isUploading, disabled }: DocumentUploadProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -34,7 +35,7 @@ const DocumentUpload = ({ onUpload, isUploading }: DocumentUploadProps) => {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={isUploading}
+          disabled={isUploading || disabled}
           className="rounded-xl border border-brand-500/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-brand-50 hover:bg-brand-500/20"
         >
           {isUploading ? "Syncing…" : "Upload"}

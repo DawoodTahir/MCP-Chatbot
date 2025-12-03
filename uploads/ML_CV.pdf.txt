@@ -1,0 +1,84 @@
+DAWOOD TAHIR
++44-07555859445•London, UK•Dawood_tahir@live.com
+www.linkedin.com/in/mdawoodtahir
+SUMMARY
+AWS Certified Machine Learning Engineer with over 2 years of experience in computer vision and AI
+projects. Skilled in developing innovative solutions, such as real-time traffic analysis and sports
+analytics using YOLOv8, and enhancing AI systems with hierarchical clustering techniques. Proven
+track record of leveraging AWS technologies for deploying AI applications. Expertise in transforming
+complex datasets into actionable insights demonstrates a strong ability to deliver valuable
+contributions, ready to elevate efficiency and accuracy for any forward-thinking organisation.
+WORK EXPERIENCE
+Data Scientist, Psi-Square, London, UK
+04/2024 – 09/2025
+Engineered a comprehensive computer vision project that calculates the traffic dwell duration in
+zones for live video feeds. The key takeaway was the utilisation of system clocks for time-in and
+time-out instead of incorporating FPS for live streams, complemented by Roboflow’s ByteTrack to
+track multiple vehicles in the zones without incurring latency.
+Investigated and conceived a project on football players and pitch detection, training a YOLOv8
+model for the detection of players from both teams. Utilised UMAP for dimensionality reduction
+which enhanced accuracy. For ball tracking in 2D, applied transformations based on key point
+coordinates of the pitch, culminating in a game-like end product capable of detecting players and
+ball possession.
+Pioneered a Multi-Agent RAG leveraging langGraph for an academic research project. A
+WebResearch Agent, PaperScraper Agent, and Evaluator Agent were employed to address user-
+specified queries related to research papers. Should the Evaluator Agent deem results
+inadequate, the WebResearch Agent was triggered to locate more suitable answers.
+
+AI Engineer, OMNO AI, Lahore
+05/2023 – 02/2024
+Developed a vehicle speed estimation project employing a single camera sensor for a specified
+highway. Live video was streamed through AWS Kinesis and AWS Lambda to skip frames and
+synchronise with the FPS of a custom car detection model.
+Applied transformation matrix techniques to convert 3D points into 2D, facilitating accurate speed
+calculation.
+Optimised RAG chunks by establishing hierarchical clusters that began from the base node and
+chunks, enabling the calculation of embeddings between simultaneous chunks while descending
+the tree structure. This significantly enhanced the relevance of the final customer bot's responses
+to queries.
+Achieved proficiency in deploying and scaling an AI ad creation application using AWS EC2
+instances. Created a workflow for scraping brand websites to extract text and imagery details,
+which were processed by an LLM Agent tailored to extract brand call-to-action (CTA) button text,
+header text, and punchlines. Utilised generative AI to produce seamless ad banners in required
+sizes using the specified text types.
+Conceived a proof of concept for face authentication employing an NIR camera for depth
+imaging, conducting an extensive research study on the implementation of PointNet++. The
+primary objective was to replicate state-of-the-art smartphone unlocking techniques that utilise
+NIR images to accurately identify facial features and match them with an embedding vector
+containing user data.
+EDUCATION
+MSc, Robotics, AI & Autonomous Systems, CITY, UNIVERSITY OF LONDON, UK
+09/2024 – 10/2025
+Grades: 1st
+BSc, Mechatronics Eng., UET, LAHORE, Pakistan
+10/2019 – 05/2023
+GPA: 3.116 / 4.0
+
+SKILLS
+Python ML
+AWS SageMaker CI / CD
+LangGraph AWS EC2
+Dockers Git
+AWS Lambda Kubernates
+TerraForm AWS ETL Tools
+LoRA Computer Vision
+Multi-UAV Drones SLAM
+VLMs Deep RL
+MCP Tools ML
+Project Management Public Relations
+Teamwork Time Management
+Leadership Effective Communication
+Critical Thinking SQL
+REFERENCES
+Dr. A.H Zenati
+SST, City, University of London
+Abdelhafid.Zenati@citystgeorges.ac.uk
+Collaborated on GAT networks for drone swarms for Safer flight and communications by MARL
+Dr. Ahsan Naeem
+Mechatronics Department, UET Lahore
+mahsan.naeem@gmail.com
+Worked together on numerous projects within the Mechatronics curriculum, facilitating valuable
+exchanges of knowledge and insights.
+PROFESSIONAL CERTIFICATIONS
+AWS Certified ML Engineer - Associate
+09/2025

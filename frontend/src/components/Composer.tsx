@@ -9,6 +9,8 @@ interface ComposerProps {
   disabled?: boolean;
   onUploadResume?: (file: File) => Promise<void> | void;
   isUploadingResume?: boolean;
+  hasResume?: boolean;
+   inputMode?: "text" | "voice";
 }
 
 const Composer = ({
@@ -17,7 +19,9 @@ const Composer = ({
   onSubmit,
   disabled,
   onUploadResume,
-  isUploadingResume
+  isUploadingResume,
+  hasResume,
+  inputMode = "text"
 }: ComposerProps) => {
   const [isListening, setIsListening] = useState(false);
   const hasText = useMemo(() => value.trim().length > 0, [value]);
@@ -105,7 +109,11 @@ const Composer = ({
       <textarea
         className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 p-4 text-base text-white placeholder:text-white/50 focus:border-brand-400/60 focus:outline-none"
         rows={4}
-        placeholder="Ask for insight, trigger WhatsApp distribution, or upload a doc…"
+        placeholder={
+          inputMode === "voice"
+            ? "For this question, please answer using voice input."
+            : "Ask for insight, trigger WhatsApp distribution, or upload a doc…"
+        }
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -116,7 +124,7 @@ const Composer = ({
             }
           }
         }}
-        disabled={disabled}
+        disabled={disabled || inputMode === "voice"}
       />
 
       <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
@@ -130,7 +138,13 @@ const Composer = ({
               <TypingDots />
             </Indicator>
           ) : (
-            <span className="text-sm text-white/60">Ready for your next question.</span>
+            <span className="text-sm text-white/60">
+              {hasResume
+                ? inputMode === "voice"
+                  ? "Please answer this one with voice."
+                  : "Resume uploaded"
+                : "Ready for your next question."}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -148,29 +162,21 @@ const Composer = ({
           </button>
           <button
             type="submit"
-            disabled={disabled || !value.trim()}
+            disabled={disabled || inputMode === "voice" || !value.trim()}
             className={clsx(
               "inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 text-sm font-semibold uppercase tracking-wide transition",
               "bg-brand-500 hover:bg-brand-400 disabled:cursor-not-allowed disabled:bg-white/10"
             )}
           >
-            {disabled ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Thinking
-              </>
-            ) : (
-              <>
-                <Send className="size-4" />
-                Send
-              </>
-            )}
+            <Send className="size-4" />
+            Send
           </button>
           <div className="relative">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || isUploadingResume}
+              // Allow resume upload even when the main composer is disabled (no resume yet).
+              disabled={isUploadingResume}
               className={clsx(
                 "inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-sm font-semibold uppercase tracking-wide transition",
                 "border border-white/10 bg-white/5 hover:border-white/30 disabled:cursor-not-allowed disabled:opacity-50"

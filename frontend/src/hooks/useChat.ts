@@ -26,6 +26,7 @@ export const useChat = () => {
   const [interviewState, setInterviewState] = useState<InterviewState | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [hasResume, setHasResume] = useState(false);
+  const [inputMode, setInputMode] = useState<"text" | "voice">("text");
 
   const sendMutation = useMutation({
     mutationFn: ({ message }: { message: string }) =>
@@ -69,6 +70,11 @@ export const useChat = () => {
       );
       setInterviewState(data.interview_state);
       setToolCalls(data.tool_calls ?? []);
+      if (data.next_input_mode) {
+        setInputMode(data.next_input_mode);
+      } else {
+        setInputMode("text");
+      }
     },
     onError: (_error, variables, context) => {
       if (context) {
@@ -93,6 +99,29 @@ export const useChat = () => {
     onSuccess: (data) => {
       if (data?.resume_indexed || data?.status === "ok") {
         setHasResume(true);
+
+        // If backend returns an initial greeting + first question,
+        // append it as an assistant message and seed interview state/tool calls.
+        if (data.answer) {
+          const assistantMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.answer,
+            createdAt: new Date().toISOString()
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+        if (data.interview_state) {
+          setInterviewState(data.interview_state);
+        }
+        if (data.tool_calls) {
+          setToolCalls(data.tool_calls as ToolCall[]);
+        }
+        if (data.next_input_mode) {
+          setInputMode(data.next_input_mode);
+        } else {
+          setInputMode("text");
+        }
       }
     }
   });
@@ -126,7 +155,8 @@ export const useChat = () => {
     uploadResume: async (file: File) => {
       await uploadMutation.mutateAsync({ file });
     },
-    isUploadingResume: uploadMutation.isPending
+    isUploadingResume: uploadMutation.isPending,
+    inputMode
   };
 };
 

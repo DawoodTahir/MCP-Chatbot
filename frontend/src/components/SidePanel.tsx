@@ -1,36 +1,247 @@
-import DocumentUpload from "./DocumentUpload";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { API_BASE_URL } from "../config";
+import type { InterviewState } from "../types";
+import { Lightbulb } from "lucide-react";
 
 interface SidePanelProps {
   hasResume: boolean;
-  onUpload: (file: File) => Promise<void> | void;
-  isUploading: boolean;
+  onUpload: (file: File) => Promise<void> | void; // kept for props compatibility, not used
+  isUploading: boolean; // kept for props compatibility, not used
+  userId: string;
+  interviewState: InterviewState | null;
 }
 
-const SidePanel = ({ hasResume, onUpload, isUploading }: SidePanelProps) => {
+interface CompanySummary {
+  name: string;
+  website: string | null;
+  linkedin: string | null;
+  services_summary: string;
+  culture_summary: string;
+}
+
+interface SuggestionsPayload {
+  role: string | null;
+  hot_skills: string[];
+  attitude_tips: string[];
+  company?: CompanySummary | null;
+}
+
+const SuggestionBox = ({
+  userId,
+  interviewState
+}: {
+  userId: string;
+  interviewState: InterviewState | null;
+}) => {
+  const { data, isLoading, error } = useQuery<SuggestionsPayload>({
+    queryKey: ["suggestions", userId],
+    // We can show company + default role suggestions even before CV upload,
+    // so only gate on userId.
+    enabled: Boolean(userId),
+    queryFn: async () => {
+      const params = new URLSearchParams({ user_id: userId });
+      const res = await fetch(`${API_BASE_URL}/suggestions?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error("Failed to load suggestions");
+      }
+      return (await res.json()) as SuggestionsPayload;
+    }
+  });
+
+  const displayRole = data?.role || "this role";
+
+  type Phase = "company" | "skills" | "tips";
+  const [phase, setPhase] = useState<Phase>("company");
+  const [headline, setHeadline] = useState("");
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [tipsVisibleCount, setTipsVisibleCount] = useState(0);
+
+  // Phase control: company info -> skills -> interview tips
+  useEffect(() => {
+    if (!data) return;
+    const hasCompany =
+      !!data.company && (!!data.company.services_summary || !!data.company.culture_summary);
+
+    setPhase(hasCompany ? "company" : "skills");
+    setHeadline("");
+    setVisibleCount(0);
+    setTipsVisibleCount(0);
+
+    let timerToSkills: number | undefined;
+    let timerToTips: number | undefined;
+
+    if (hasCompany) {
+      // ~12s for company profile, then ~20s of skills, then switch to tips
+      timerToSkills = window.setTimeout(() => setPhase("skills"), 12000);
+      timerToTips = window.setTimeout(() => setPhase("tips"), 12000 + 20000);
+    } else {
+      // No company info, go from skills to tips directly
+      timerToTips = window.setTimeout(() => setPhase("tips"), 20000);
+    }
+
+    return () => {
+      if (timerToSkills) window.clearTimeout(timerToSkills);
+      if (timerToTips) window.clearTimeout(timerToTips);
+    };
+  }, [data]);
+
+  // Animate skills (headline + chips) when in skills phase
+  useEffect(() => {
+    if (!data || phase !== "skills") return;
+    const full = `Did you know most ${displayRole} have these skills?`;
+    let charIndex = 0;
+    let skillsTimer: number | undefined;
+
+    setHeadline("");
+    setVisibleCount(0);
+
+    const typeTimer = window.setInterval(() => {
+      charIndex += 1;
+      setHeadline(full.slice(0, charIndex));
+
+      if (charIndex >= full.length) {
+        window.clearInterval(typeTimer);
+        const maxSkills = Math.min(data.hot_skills.length, 10);
+        skillsTimer = window.setInterval(() => {
+          setVisibleCount((prev) => {
+            const next = Math.min(maxSkills, prev + 1);
+            if (next >= maxSkills && skillsTimer) {
+              window.clearInterval(skillsTimer);
+            }
+            return next;
+          });
+        }, 350);
+      }
+    }, 35);
+
+    return () => {
+      window.clearInterval(typeTimer);
+      if (skillsTimer) {
+        window.clearInterval(skillsTimer);
+      }
+    };
+  }, [data, displayRole, phase]);
+
+  // Animate tips popping in one by one when in tips phase
+  useEffect(() => {
+    if (!data || phase !== "tips") return;
+    setTipsVisibleCount(0);
+    const maxTips = Math.min(data.attitude_tips.length, 10);
+    const timer = window.setInterval(() => {
+      setTipsVisibleCount((prev) => {
+        const next = Math.min(maxTips, prev + 1);
+        if (next >= maxTips) {
+          window.clearInterval(timer);
+        }
+        return next;
+      });
+    }, 350);
+
+    return () => window.clearInterval(timer);
+  }, [data, phase]);
+
+  if (isLoading || !data) {
+    return (
+      <div className="rounded-3xl border border-white/10 bg-white/10 p-4 text-xs text-white/70">
+        Loading suggestions…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-3xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-100">
+        Couldn&apos;t load suggestions right now.
+      </div>
+    );
+  }
+
+  const skillsToShow = data.hot_skills.slice(0, Math.min(visibleCount, 10));
+  const tipsToShow = data.attitude_tips.slice(0, Math.min(tipsVisibleCount, 10));
+
   return (
-    <div className="flex h-full flex-col gap-5 rounded-[26px] border border-white/10 bg-slate-900/60 p-5">
-      <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-brand-300/30 via-transparent to-transparent p-5">
-        <p className="text-sm uppercase tracking-wide text-white/60">Atlas Concierge</p>
-        <h2 className="mt-2 text-2xl font-semibold text-white">Seamless, white-glove chat</h2>
-        <p className="mt-3 text-sm text-white/70">
-          Upload once, then let the assistant drive a structured interview and prep WhatsApp-ready
-          recaps.
-        </p>
+    <div className="space-y-4 rounded-3xl border border-white/10 bg-white/15 p-5 text-sm text-white/80">
+      <div className="flex items-center gap-2 text-white">
+        <Lightbulb className="size-4 text-brand-200" />
+        <h3 className="text-xs font-semibold uppercase tracking-wide">
+          {phase === "company"
+            ? "RecruitLens"
+            : phase === "tips"
+              ? "Interview Tips"
+              : `Top skills · ${displayRole}`}
+        </h3>
       </div>
 
-      <section className="rounded-3xl border border-white/10 bg-white/15 p-5 text-sm text-white/80">
-        <DocumentUpload onUpload={onUpload} isUploading={isUploading} />
-        {hasResume ? (
-          <p className="mt-3 text-xs text-emerald-300">
-            Resume received. You can keep chatting or trigger WhatsApp updates any time.
-          </p>
-        ) : (
-          <p className="mt-3 text-xs text-white/70">
-            Upload your resume once to unlock the interview flow. Afterwards, the upload button
-            stays disabled for this session.
-          </p>
+      {phase === "company" &&
+        data.company &&
+        (data.company.services_summary || data.company.culture_summary) && (
+          <div className="space-y-2 text-xs text-white/80">
+            <p className="font-semibold text-sm">
+              {data.company.name}
+              {data.company.website && (
+                <span className="ml-2 text-[10px] text-brand-200 break-all">
+                  {data.company.website}
+                </span>
+              )}
+            </p>
+            {data.company.services_summary && (
+              <p>
+                <span className="font-semibold text-white/90">What they do: </span>
+                <span className="text-white/80">{data.company.services_summary}</span>
+              </p>
+            )}
+            {data.company.culture_summary && (
+              <p>
+                <span className="font-semibold text-white/90">Culture: </span>
+                <span className="text-white/80">{data.company.culture_summary}</span>
+              </p>
+            )}
+          </div>
         )}
-      </section>
+
+      {phase === "skills" && data.hot_skills.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs text-white/70">{headline}</p>
+          <div className="flex flex-wrap gap-2">
+            {skillsToShow.map((s) => (
+              <span
+                key={s}
+                className="rounded-full bg-brand-500/15 px-3 py-1 text-xs text-white border border-brand-500/40"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {phase === "tips" && tipsToShow.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {tipsToShow.map((tip) => (
+            <span
+              key={tip}
+              className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-100 border border-emerald-400/40"
+            >
+              {tip}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SidePanel = ({ hasResume, userId, interviewState }: SidePanelProps) => {
+  return (
+    <div className="flex h-full flex-col gap-5 rounded-[26px] border border-white/10 bg-slate-900/60 p-5">
+      <div className="mb-2">
+        <h2 className="text-lg font-semibold text-white tracking-wide">RecruitLens</h2>
+      </div>
+      <SuggestionBox userId={userId} interviewState={interviewState} />
+      <div className="mt-auto pt-3 border-t border-white/5 text-[10px] leading-snug text-white/40">
+        <p>Privacy: Your resume and chat are used only to personalise this interview experience.</p>
+      </div>
     </div>
   );
 };

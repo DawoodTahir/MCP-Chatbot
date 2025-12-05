@@ -24,5 +24,6 @@ export interface ChatResponse {
   answer: string;
   interview_state: InterviewState;
   tool_calls: ToolCall[];
+  next_input_mode?: "text" | "voice";
 }
 

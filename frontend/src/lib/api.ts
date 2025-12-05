@@ -40,7 +40,7 @@ export async function uploadResume({
 }: {
   userId: string;
   file: File;
-}): Promise<{ status: string; indexed_path?: string; resume_indexed?: boolean }> {
+}): Promise<{ status: string; indexed_path?: string; resume_indexed?: boolean } & Partial<ChatResponse>> {
   const form = new FormData();
   form.append("file", file);
   // optional: send user_id if backend ever wants it

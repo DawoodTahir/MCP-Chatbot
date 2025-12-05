@@ -1,8 +1,9 @@
 import asyncio
 import json
-import os
+import os,requests
 import pathlib
 import logging
+import random
 import PyPDF2
 import docx2txt
 from openai import OpenAI
@@ -274,6 +275,205 @@ class MCPClient:
         await self.exit_stack.aclose()
 
 
+class CompanyProfile:
+    """
+    Lightweight container for company insights used by the suggestion box.
+    """
+
+    def __init__(self, name, website, linkedin, services_summary, culture_summary, raw_snippets):
+        self.name = name
+        self.website = website
+        self.linkedin = linkedin
+        self.services_summary = services_summary
+        self.culture_summary = culture_summary
+        self.raw_snippets = raw_snippets
+
+
+class CompanyInsightsScraper:
+    """
+    Scrapes a company's public website (and optionally LinkedIn) and uses an LLM
+    to build a short profile: services + culture.
+    """
+
+    def __init__(self, openai_client=None, user_agent: str = "RecruitLensBot/1.0"):
+        self.client = openai_client or _create_openai_client()
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "User-Agent": user_agent,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }
+        )
+
+    async def scrape_company(
+        self,
+        *,
+        company_name: str,
+        website_url: str | None = None,
+        linkedin_url: str | None = None,
+        max_pages: int = 5,
+    ) -> "CompanyProfile":
+        """
+        High-level entrypoint:
+        - Crawl the website (if provided)
+        - Optionally fetch LinkedIn summary text (stubbed)
+        - Ask the LLM to summarise services + culture
+        """
+        snippets: list[str] = []
+
+        if website_url:
+            snippets.extend(await self._scrape_site(website_url, max_pages=max_pages))
+
+        if linkedin_url:
+            linkedin_text = await self._fetch_linkedin_public_summary(linkedin_url)
+            if linkedin_text:
+                snippets.append(linkedin_text)
+
+        merged_text = "\n\n".join(snippets[:20])  # keep token size sane
+        services_summary, culture_summary = await self._summarise_with_llm(
+            company_name=company_name,
+            website_url=website_url,
+            linkedin_url=linkedin_url,
+            text=merged_text,
+        )
+
+        return CompanyProfile(
+            name=company_name,
+            website=website_url,
+            linkedin=linkedin_url,
+            services_summary=services_summary,
+            culture_summary=culture_summary,
+            raw_snippets=snippets,
+        )
+
+    async def _scrape_site(self, base_url: str, max_pages: int = 5) -> list[str]:
+        """
+        Very simple breadth-first crawl limited to a few internal pages.
+        Focuses on obvious 'About/Services/Careers' URLs.
+        """
+        import re
+        import time
+        from urllib.parse import urljoin, urlparse
+
+        to_visit: list[str] = [base_url]
+        visited: set[str] = set()
+        texts: list[str] = []
+
+        def is_same_domain(url: str) -> bool:
+            try:
+                base = urlparse(base_url).netloc
+                netloc = urlparse(url).netloc
+                return not netloc or netloc == base
+            except Exception:
+                return False
+
+        while to_visit and len(visited) < max_pages:
+            url = to_visit.pop(0)
+            if url in visited:
+                continue
+            visited.add(url)
+
+            try:
+                resp = self.session.get(url, timeout=8)
+                resp.raise_for_status()
+            except Exception:
+                continue
+
+            from bs4 import BeautifulSoup
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            for script in soup(["script", "style", "noscript"]):
+                script.extract()
+            text = " ".join(soup.get_text(separator=" ").split())
+            if len(text) > 200:
+                texts.append(text[:5000])
+
+            for a in soup.find_all("a", href=True):
+                href = a["href"].strip()
+                if not href or href.startswith(("#", "mailto:", "tel:")):
+                    continue
+                full = urljoin(base_url, href)
+                if not is_same_domain(full):
+                    continue
+                if full in visited or full in to_visit:
+                    continue
+                if re.search(r"(about|team|company|culture|careers|service|product)", full, re.I):
+                    to_visit.append(full)
+
+            time.sleep(0.3)
+
+        return texts
+
+    async def _fetch_linkedin_public_summary(self, linkedin_url: str) -> str:
+        """
+        Placeholder for LinkedIn integration. For now this returns an empty string.
+        In production, integrate with an approved LinkedIn API or accept pasted text.
+        """
+        return ""
+
+    async def _summarise_with_llm(
+        self,
+        *,
+        company_name: str,
+        website_url: str | None,
+        linkedin_url: str | None,
+        text: str,
+    ) -> tuple[str, str]:
+        """
+        Ask the LLM to produce two short summaries:
+        - What the company does (services/products)
+        - What their culture/employer brand looks like
+        """
+        if not text:
+            return "", ""
+
+        system_prompt = (
+            "You are an expert B2B research analyst and HR advisor.\n"
+            "You will receive raw text scraped from a company's website (and optionally LinkedIn).\n"
+            "Your job is to build a concise briefing for a candidate who is about to interview there.\n\n"
+            "1) SERVICES / BUSINESS SUMMARY:\n"
+            "- What do they actually do? Products, services, target customers, markets.\n"
+            "- Keep this factual and concrete.\n\n"
+            "2) CULTURE / EMPLOYER BRAND SUMMARY:\n"
+            "- Tone of their messaging, values, diversity/inclusion signals, how they talk about teams.\n"
+            "- Any hints about how promising or people‑centric their culture is.\n\n"
+            "Output JSON ONLY in this shape:\n"
+            "{\n"
+            '  \"services\": \"...\",\n'
+            '  \"culture\": \"...\"\n'
+            "}\n"
+        )
+
+        user_payload = {
+            "company_name": company_name,
+            "website_url": website_url,
+            "linkedin_url": linkedin_url,
+            "raw_text": text[:12000],
+        }
+
+        def _complete() -> tuple[str, str]:
+            resp = self.client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=500,
+                temperature=0.2,
+            )
+            content = resp.choices[0].message.content or "{}"
+            try:
+                data = json.loads(content)
+                return (
+                    (data.get("services") or "").strip(),
+                    (data.get("culture") or "").strip(),
+                )
+            except Exception:
+                return "", ""
+
+        return await asyncio.to_thread(_complete)
 class Transcriber:
     """
     Handles Speech-to-Text using OpenAI Whisper and extracts basic prosodic features.
@@ -678,6 +878,122 @@ class ChatAgent:
         # Audio Transcriber
         self.transcriber = Transcriber()
 
+    async def generate_role_tech_keywords(self, role: str, limit: int = 15) -> list[str]:
+        """
+        For the side suggestion panel:
+        Given a job title from the CV, return up to `limit` two-word (or very short)
+        tech stack / library / methods keywords that are worth learning for this role.
+        """
+        system_prompt = (
+            "You are a domain expert and career coach.\n"
+            "Given a target role title, list the most important, in-demand skills and tech stacks "
+            "for that role TODAY.\n"
+            "Focus on concrete tools, libraries, frameworks, methods and technical competency areas "
+            "that a candidate should learn or deepen.\n"
+            "Each keyword should be at most TWO words (e.g. 'Finite Elements', 'CAD Automation', "
+            "'Packaging Materials'). Avoid long sentences.\n"
+            "Return ONLY valid JSON in this shape:\n"
+            "{ \"skills\": [\"keyword 1\", \"keyword 2\", ...] }\n"
+        )
+
+        payload = {"role": role, "max_skills": limit}
+
+        def _complete() -> str:
+            resp = self.llm.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=400,
+                temperature=DEFAULT_TEMPERATURE,
+            )
+            return resp.choices[0].message.content or "{}"
+
+        try:
+            content = await asyncio.to_thread(_complete)
+            data = json.loads(content)
+            skills_list = data.get("skills") or []
+            skills: list[str] = [
+                str(s).strip() for s in skills_list if isinstance(s, str) and str(s).strip()
+            ][:limit]
+            return skills
+        except Exception:
+            return []
+
+    async def generate_attitude_tips(self, role: str, skills: list[str]) -> list[str]:
+        """
+        Generate short two-word interview mindset / attitude tips for the given role+skills,
+        used in the suggestion sidebar.
+        """
+        system_prompt = (
+            "You are a senior hiring coach for high‑stakes technical interviews.\n"
+            "Given a target role and a list of hot skills in that domain, produce a set of very short, "
+            "two‑word attitude/mindset tips that help the candidate show up at their best.\n"
+            "Rules for each tip:\n"
+            "- It must be exactly TWO words (e.g. 'Stay calm', 'Trust yourself', 'Own outcomes').\n"
+            "- Focus on confidence, clarity, listening, curiosity, and professionalism.\n"
+            "- Do NOT mention specific tools, company names, or long phrases.\n"
+            "Return ONLY valid JSON in this exact shape:\n"
+            "{ \"tips\": [\"Two words\", \"Another tip\", ...] }\n"
+        )
+
+        payload = {"role": role, "skills": skills}
+
+        def _complete() -> str:
+            resp = self.llm.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=400,
+                temperature=DEFAULT_TEMPERATURE,
+            )
+            return resp.choices[0].message.content or "{}"
+
+        try:
+            content = await asyncio.to_thread(_complete)
+            data = json.loads(content)
+            tips_list = data.get("tips") or []
+            return [str(t).strip() for t in tips_list if isinstance(t, str) and str(t).strip()]
+        except Exception:
+            return []
+
+    def _maybe_prefix_greeting(self, state: InterviewState, answer: str) -> str:
+        """
+        If we have the candidate's name (from slots or parsed resume) and we haven't
+        greeted them yet, prefix the next answer with a friendly greeting that also
+        explains *why* the agent is talking to them.
+        This should happen exactly once per interview, typically right after
+        the resume is uploaded and the first routed question is asked.
+        """
+        if getattr(state, "greeted", False):
+            return answer
+
+        name = None
+        # Prefer slot value if planner/state has filled it.
+        if state.slots.get("full_name"):
+            name = state.slots["full_name"]
+        else:
+            try:
+                candidate = getattr(self.rag, "candidate_info", {}) or {}
+                name = candidate.get("full_name")
+            except Exception:
+                name = None
+
+        if name:
+            # First message sets context: why we are here + then the routed question.
+            preface = (
+                f"Hi {name}, I'm RecruitLens. I'm here to walk through your experience "
+                "and understand how you fit the target role. "
+            )
+            answer = f"{preface}\n\n{answer}"
+        state.greeted = True
+        return answer
+
     async def _call_llm(self, system_prompt, user_content):
         def _complete() -> str:
             response = self.llm.chat.completions.create(
@@ -930,7 +1246,12 @@ class ChatAgent:
             "- Ask for specific details (what they did, metrics, bottlenecks, decisions, impact).\n\n"
             "For more generic slots (full_name, total_experience, notice_period, visa_status):\n"
             "- Keep questions short and factual.\n"
-            "- You may briefly tie them back to the CV when it helps (e.g. \"across your last 3 roles...\").\n\n"
+            "- You may briefly tie them back to the CV when it helps (e.g. \"across your last 3 roles...\").\n"
+            "- For total_experience specifically, prefer a formulation like:\n"
+            "  \"Across your roles at <company1> and <company2>, could you please confirm your total professional "
+            "experience in years and months?\"\n"
+            "  Use company names from resume_struct.experiences when available, and always explicitly ask for "
+            "\"years and months\".\n\n"
             "If latest_user_message clearly refuses to answer or says they don't know (for example "
             "'I can't tell you that' or 'I don't know'), acknowledge that politely and either:\n"
             "- offer a softer way to answer (for example a rough estimate or a range), or\n"
@@ -1034,6 +1355,50 @@ class ChatAgent:
         await self.mcp_client.send_whatsapp_message(
             message=full_report.strip(),
         )
+
+    async def start_interview(self, user_id):
+        """
+        Kick off the interview immediately after a resume has been uploaded.
+
+        Behaviour:
+        - assumes the resume is already indexed in self.rag
+        - initialises / reuses the InterviewState (so slots like full_name are pre‑filled)
+        - sends a *pure greeting / why‑we‑are‑here* message, without asking a slot question yet
+        - lets the candidate say something first
+        - the next user turn will go through handle_message(), which will start the routed interview
+        """
+        if not self.rag.has_index():
+            return {
+                "answer": "Please upload your latest resume.",
+                "interview_state": None,
+                "tool_calls": [],
+                "flagged": False,
+                "reason": "resume_missing",
+            }
+
+        history = self._histories.setdefault(user_id, [])
+        state = self._get_or_create_interview_state(user_id)
+
+        # For the initial kick‑off we only send a greeting / context message.
+        # The first actual interview question will be generated after the user
+        # replies, inside handle_message().
+        answer = self._maybe_prefix_greeting(state, "")
+        tool_calls: list[dict] = []
+        next_input_mode = "text"
+
+        history.append({"role": "assistant", "content": answer})
+
+        return {
+            "answer": answer,
+            "interview_state": {
+                "slots": state.slots,
+                "goal_completed": state.goal_completed,
+                "ended": state.ended,
+            },
+            "tool_calls": tool_calls,
+            "next_input_mode": next_input_mode,
+        }
+
     ##Entry point of the app
     async def handle_message(
         self,
@@ -1048,6 +1413,8 @@ class ChatAgent:
         - Decide whether to ask a new question or end the interview.
         - Optionally send the final answer to WhatsApp for the user.
         - After goal completion and goodbye, send a structured report to the owner.
+        - Randomly require some answers (especially deeper project questions)
+          to be provided via voice, so that the prosody/OCEAN analyser has signal.
         """
         if not self.rag.has_index():
             return {
@@ -1086,6 +1453,8 @@ class ChatAgent:
         state.goal_completed = decision.goal_completed
 
         tool_calls = []
+        # Default: text input for next turn, unless we decide to force voice.
+        next_input_mode = "text"
 
         if decision.next_action == "END":
             state.ended = True
@@ -1127,21 +1496,28 @@ class ChatAgent:
                     # Combine reaffirmation + original next question.
                     answer = f"{deepen_text}\n\n{answer}"
 
+            # For some project / behavioural slots, randomly require VOICE input next
+            # so that we can collect prosodic features via the /voice endpoint.
+            voice_eligible_slots = {
+                "project_description",
+                "project_metric",
+                "project_bottleneck",
+                "project_solution",
+                "team_challenge",
+                "adaptability_example",
+                "leadership_example",
+            }
+            try:
+                if (
+                    decision.target_slot in voice_eligible_slots
+                    and random.random() < 0.4  # ~40% of these will be voice-only
+                ):
+                    next_input_mode = "voice"
+            except Exception:
+                next_input_mode = "text"
+
         # Greet the candidate by name once, if we have their name from the resume or slots.
-        if not getattr(state, "greeted", False):
-            name = None
-            # Prefer slot value if planner/state has filled it.
-            if state.slots.get("full_name"):
-                name = state.slots["full_name"]
-            else:
-                try:
-                    candidate = getattr(self.rag, "candidate_info", {}) or {}
-                    name = candidate.get("full_name")
-                except Exception:
-                    name = None
-            if name:
-                answer = f"Hi {name}, {answer}"
-            state.greeted = True
+        answer = self._maybe_prefix_greeting(state, answer)
 
         history.append({"role": "assistant", "content": answer})
 
@@ -1159,6 +1535,7 @@ class ChatAgent:
                 "ended": state.ended,
             },
             "tool_calls": tool_calls,
+            "next_input_mode": next_input_mode,
         }
 
 

@@ -35,7 +35,7 @@ const MessageBubble = ({ message }: MessageBubbleProps) => {
       <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-white/60">
         <div className={`flex items-center gap-2 font-semibold ${config.accent}`}>
           <Icon className="size-4" />
-          {message.role === "assistant" ? "Atlas" : message.role}
+          {message.role === "assistant" ? "RecruitLens" : message.role}
         </div>
         <span className="text-white/40">·</span>
         <span>{new Date(message.createdAt).toLocaleTimeString()}</span>

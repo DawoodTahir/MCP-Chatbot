@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import asyncio
 import os
 from pathlib import Path
-from utils import MCPClient, GraphRAG,ChatAgent,Preprocess
+from utils import MCPClient, GraphRAG, ChatAgent, Preprocess, CompanyInsightsScraper
 from werkzeug.utils import secure_filename
 
 logger = logging.getLogger("chatbot")
@@ -18,12 +18,16 @@ FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 UPLOADS = BASE_DIR / "uploads"
 UPLOADS.mkdir(exist_ok = True)
 
+# Simple in-memory cache for suggestion box content.
+# Keyed by (user_id, role_title) so we don't recompute LLM skills/tips every time.
+SUGGESTIONS_CACHE: dict[tuple[str, str], dict] = {}
+
 
 ##App initialize
 app = Flask(__name__)
 
 async def init():
-    global agent , preprocess
+    global agent , preprocess, company_scraper
 
 
     mcp_client = MCPClient()
@@ -33,6 +37,7 @@ async def init():
 
     rag = GraphRAG()
     agent = ChatAgent(mcp_client=mcp_client,rag=rag)
+    company_scraper = CompanyInsightsScraper()
     preprocess = Preprocess()
 
 
@@ -178,6 +183,7 @@ def voice_chat():
 def upload():
     request_id = str(uuid.uuid4())
     t0 = time.time()
+    user_id = request.form.get("user_id", "anonymous")
     if "file" not in request.files:
         logger.info(json.dumps({
             "type": "request",
@@ -218,12 +224,154 @@ def upload():
 
 
     async def _run():
+        # 1) Index the resume into GraphRAG (and parse candidate info)
         await agent.rag.index_document(index_path)
+        # 2) Immediately kick off the interview so the bot can greet the user
+        #    by name and ask the first routed question.
+        try:
+            start_result = await agent.start_interview(user_id)
+        except Exception as exc:
+            app.logger.warning("start_interview failed for user %s: %s", user_id, exc)
+            start_result = None
 
-    
-    asyncio.run(_run())
+        return start_result
 
-    return jsonify({"status":"ok","indexed_path": str(index_path)})
+    start_result = asyncio.run(_run())
+
+    payload = {
+        "status": "ok",
+        "indexed_path": str(index_path),
+        "resume_indexed": True,
+    }
+    if isinstance(start_result, dict):
+        # Merge the initial chat-style response (answer, interview_state, tool_calls, next_input_mode)
+        # so the frontend can immediately display the greeting + first question.
+        payload.update(start_result)
+
+    return jsonify(payload)
+
+
+@app.route("/suggestions", methods=["GET"])
+def suggestions():
+    """
+    Suggestion box endpoint:
+    - Reads the candidate's role (title) from query or parsed CV.
+    - Runs two tools in sequence:
+        1) ESCO-based role skill extraction (+ LLM rewriting) via fetch_esco_role_skills
+        2) Generic interview attitude suggestions via generate_attitude_suggestions
+    - Returns a compact payload for the frontend side panel.
+    """
+    user_id = request.args.get("user_id", "anonymous")
+    explicit_role = request.args.get("role")
+
+    # Determine role title / headline for display in the side panel.
+    # Prefer a richer, longer headline from the parsed CV where possible.
+    role_title = explicit_role
+    try:
+        candidate = getattr(agent.rag, "candidate_info", {}) or {}
+        resume_struct = getattr(agent.rag, "resume_struct", {}) or {}
+    except Exception:
+        candidate = {}
+        resume_struct = {}
+
+    if not role_title:
+        # 1) Prefer CV headline if it is reasonably descriptive (more than 3 words)
+        headline = (candidate.get("headline") or "").strip()
+        if headline and len(headline.split()) > 3:
+            role_title = headline
+        else:
+            # 2) Otherwise, build something slightly richer from title/role + top skills
+            base = (
+                (candidate.get("headline") or "").strip()
+                or (candidate.get("title") or "").strip()
+                or (candidate.get("role") or "").strip()
+            )
+            skills = resume_struct.get("skills") or []
+            skills_fragment = ""
+            if skills:
+                top_skills = ", ".join(skills[:2])
+                skills_fragment = f" with experience in {top_skills}"
+            role_title = (base + skills_fragment).strip()
+
+    if not role_title:
+        # Final fallback if CV parsing didn't give us anything meaningful.
+        role_title = "Machine Learning Engineer"
+
+    occupation_label = role_title
+
+    # If we've already generated suggestions for this user + role, serve from cache.
+    cache_key = (user_id, role_title)
+    cached = SUGGESTIONS_CACHE.get(cache_key)
+    if cached is not None:
+        payload = {
+            "role": role_title,
+            "hot_skills": cached.get("hot_skills", []),
+            "attitude_tips": cached.get("attitude_tips", []),
+            "company": cached.get("company"),
+        }
+        return jsonify(payload)
+
+    # Company insights (can run before any CV upload)
+    company_name = os.environ.get("COMPANY_NAME", "").strip()
+    company_website = os.environ.get("COMPANY_WEBSITE", "").strip() or None
+    company_linkedin = os.environ.get("COMPANY_LINKEDIN", "").strip() or None
+
+    async def _run_tools():
+        # Tool 1: role tech keywords via ChatAgent (LLM-only, no ESCO/ONET)
+        try:
+            hot = await agent.generate_role_tech_keywords(role_title, limit=15)
+        except Exception as exc:
+            logger.warning("generate_role_tech_keywords failed: %s", exc)
+            hot = []
+
+        # Tool 2: generic interview attitude suggestions (LLM, via agent)
+        try:
+            tips = await agent.generate_attitude_tips(occupation_label, hot)
+        except Exception as exc:
+            logger.warning("generate_attitude_tips failed: %s", exc)
+            tips = []
+
+        # Company profile via scraper if configured
+        company_profile = None
+        if company_name and company_website:
+            try:
+                profile = await company_scraper.scrape_company(
+                    company_name=company_name,
+                    website_url=company_website,
+                    linkedin_url=company_linkedin,
+                    max_pages=5,
+                )
+                company_profile = {
+                    "name": profile.name,
+                    "website": profile.website,
+                    "linkedin": profile.linkedin,
+                    "services_summary": profile.services_summary,
+                    "culture_summary": profile.culture_summary,
+                }
+            except Exception as e:
+                logger.warning("CompanyInsightsScraper failed: %s", e)
+                company_profile = None
+
+        return hot, tips, company_profile
+
+    hot_skills, attitude_tips, company_profile = asyncio.run(_run_tools())
+
+    # Store in cache so subsequent sidebar refreshes don't re-hit the LLM.
+    SUGGESTIONS_CACHE[cache_key] = {
+        "hot_skills": hot_skills,
+        "attitude_tips": attitude_tips,
+        "company": company_profile,
+    }
+
+    # For display in the UI, prefer the role/title as extracted from the CV or
+    # explicitly provided by the caller (e.g. "packing machinery engineer").
+    payload = {
+        "role": role_title,
+        "hot_skills": hot_skills,
+        "attitude_tips": attitude_tips,
+        "company": company_profile,
+    }
+    return jsonify(payload)
 
 
 @app.route("/", defaults={"path": ""})

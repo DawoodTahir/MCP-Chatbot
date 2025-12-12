@@ -1,0 +1,61 @@
+<<<<<<< HEAD
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+
+# Terraform local state
+infra/.terraform/
+infra/terraform.tfstate
+infra/terraform.tfstate.*
+
+# Kubernetes manifests that may contain secrets (local-only)
+k8s-api.yaml
+
+# Local env & secrets
+.env
+*.env
+.env.*
+
+# IDE / OS junk
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Editor / tooling
+*.swp
+*.swo
+
+
+=======
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Production
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# System
+.DS_Store
+
+# User Uploads
+uploads/
+>>>>>>> origin/sarim

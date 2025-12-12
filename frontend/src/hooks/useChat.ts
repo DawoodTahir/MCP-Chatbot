@@ -1,0 +1,149 @@
+import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { sendChatMessage, uploadResume } from "../lib/api";
+import type { ChatMessage, InterviewState, ToolCall } from "../types";
+
+const ensureUserId = () => crypto.randomUUID();
+
+export const useChat = () => {
+  const [userId] = useState<string>(() => ensureUserId());
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [composerValue, setComposerValue] = useState("");
+  const [temperature, setTemperature] = useState(0.3);
+  const [interviewState, setInterviewState] = useState<InterviewState | null>(null);
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [hasResume, setHasResume] = useState(false);
+  const [inputMode, setInputMode] = useState<"text" | "voice">("text");
+
+  const sendMutation = useMutation({
+    mutationFn: ({ message }: { message: string }) =>
+      sendChatMessage({ userId, message, temperature }),
+    onMutate: async ({ message }) => {
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: message,
+        createdAt: new Date().toISOString()
+      };
+      const assistantPlaceholder: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "Spinning up MCP stack…",
+        createdAt: new Date().toISOString(),
+        pending: true
+      };
+
+      setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
+      setComposerValue("");
+
+      return {
+        userMessageId: userMessage.id,
+        assistantMessageId: assistantPlaceholder.id
+      };
+    },
+    onSuccess: (data, _variables, context) => {
+      if (!context) return;
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === context.assistantMessageId
+            ? {
+                ...msg,
+                content: data.answer,
+                pending: false,
+                createdAt: new Date().toISOString()
+              }
+            : msg
+        )
+      );
+      setInterviewState(data.interview_state);
+      setToolCalls(data.tool_calls ?? []);
+      if (data.next_input_mode) {
+        setInputMode(data.next_input_mode);
+      } else {
+        setInputMode("text");
+      }
+    },
+    onError: (_error, variables, context) => {
+      if (context) {
+        setMessages((prev) =>
+          prev.filter(
+            (msg) => msg.id !== context.userMessageId && msg.id !== context.assistantMessageId
+          )
+        );
+      }
+      setComposerValue(variables.message);
+    }
+  });
+
+  const resetConversation = () => {
+    setMessages([]);
+    setInterviewState(null);
+    setToolCalls([]);
+  };
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ file }: { file: File }) => uploadResume({ userId, file }),
+    onSuccess: (data) => {
+      if (data?.resume_indexed || data?.status === "ok") {
+        setHasResume(true);
+
+        // If backend returns an initial greeting + first question,
+        // append it as an assistant message and seed interview state/tool calls.
+        if (data.answer) {
+          const assistantMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.answer,
+            createdAt: new Date().toISOString()
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+        if (data.interview_state) {
+          setInterviewState(data.interview_state);
+        }
+        if (data.tool_calls) {
+          setToolCalls(data.tool_calls as ToolCall[]);
+        }
+        if (data.next_input_mode) {
+          setInputMode(data.next_input_mode);
+        } else {
+          setInputMode("text");
+        }
+      }
+    }
+  });
+
+  const slotStats = useMemo(() => {
+    if (!interviewState?.slots) {
+      return { filled: 0, total: 0, remaining: 0 };
+    }
+    const entries = Object.entries(interviewState.slots);
+    const filled = entries.filter(([, value]) => Boolean(value && value.trim())).length;
+    const total = entries.length;
+    return { filled, total, remaining: Math.max(total - filled, 0) };
+  }, [interviewState]);
+
+  return {
+    messages,
+    composerValue,
+    setComposerValue,
+    temperature,
+    setTemperature,
+    sendMessage: async (message: string) => {
+      await sendMutation.mutateAsync({ message });
+    },
+    isSending: sendMutation.isPending,
+    interviewState,
+    resetConversation,
+    userId,
+    toolCalls,
+    slotStats,
+    hasResume,
+    uploadResume: async (file: File) => {
+      await uploadMutation.mutateAsync({ file });
+    },
+    isUploadingResume: uploadMutation.isPending,
+    inputMode
+  };
+};
+

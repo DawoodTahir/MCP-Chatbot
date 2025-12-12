@@ -1,0 +1,30 @@
+version: "3.8"
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      NEO4J_URI: ${NEO4J_URI}
+      NEO4J_USERNAME: ${NEO4J_USERNAME}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      AWS_REGION: ${AWS_REGION}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL}
+      S3_BUCKET_RESUMES: ${S3_BUCKET_RESUMES}
+      COMPANY_NAME: ${COMPANY_NAME}
+      COMPANY_WEBSITE: ${COMPANY_WEBSITE}
+      COMPANY_LINKEDIN: ${COMPANY_LINKEDIN}
+    depends_on:
+      - mcp
+    ports:
+      - "5000:5000"
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    environment:
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+      WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID}
